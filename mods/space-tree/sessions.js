@@ -4,6 +4,7 @@
 import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { hc, notify, agents, terminals, panes, focused, run, theme, settings, shared, setShared, setAgentOrder, openOverlay } from "herdr";
+import { byAddress, cancelDrag, sessionItem, sessionsInOrder } from "./arrange.js";
 
 const TUI = { working: "#72fd9d", idle: "#4df5ff", done: "#d898ff", blocked: "#ff6f8e", unknown: "#ffe15c",
   spend: "#86b383", rc: "#b86f86", amber: "#fab387", red: "#f38ba8", sub: "#a6adc8" };
@@ -66,7 +67,7 @@ function actionButtons(a, s, kids, t) {
   const chip = (id, label, tip, action) => div().id(`${id}-${a.address}`).size(18).flex().items_center().justify_center().rounded(4).border(1).border_color(t.dim).bg(t.popover)
     .cursor_pointer().hover((x) => x.bg(t.hover)).tooltip(tip)
     .on_click((_e, cx) => {
-      cx.stop_propagation();
+      (cancelDrag(), cx.stop_propagation());
       openOverlay({ mod: "session-actions", kind: "dialog", modal: true, width: 480, height: 300, props: { action, session: actionInfo(a, s), kids: kids.map((k) => actionInfo(k, k.stats)) } });
     })
     .child(label);
@@ -269,7 +270,7 @@ export class Sessions {
       .text_color(color)
       .cursor_pointer()
       .tooltip("Fold or unfold the stats")
-      .on_click((_e, cx) => { cx.stop_propagation(); this.toggleFold(a.address); })
+      .on_click((_e, cx) => { (cancelDrag(), cx.stop_propagation()); this.toggleFold(a.address); })
       .child(g);
   }
 
@@ -286,7 +287,7 @@ export class Sessions {
     return div().id(`card-min-${a.address}`).size(16).flex_none().flex().items_center().justify_center().rounded(4).border(1).border_color(t.dim)
       .text_size(12).font_semibold().text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.accent))
       .tooltip(folded ? "Expand this session" : "Minimise this session")
-      .on_click((_e, cx) => { cx.stop_propagation(); this.toggleFold(a.address); })
+      .on_click((_e, cx) => { (cancelDrag(), cx.stop_propagation()); this.toggleFold(a.address); })
       .child(folded ? "+" : "\u2013");
   }
 
@@ -429,8 +430,7 @@ export class Sessions {
     this.hold(list);
 
     const urgency = new Map(list.map((a) => [a.address, Math.max(this.rank(a), ...this.tree(all, a.address).map((s) => RANK[kidStatus(s.t, this.listed)] ?? 0))]));
-    const sorted = [...list].sort((x, y) => Number(y.pinned) - Number(x.pinned)
-      || urgency.get(y.address) - urgency.get(x.address) || this.since(y) - this.since(x) || y.seq - x.seq);
+    const sorted = [...list].sort(byAddress);
 
     // Which space each session sits under: by its tab, which says so on any machine.
     const spaceOfTab = new Map(sp.flatMap((s) => (s.tabs ?? []).map((tab) => [tab.id, s.id])));
@@ -448,6 +448,12 @@ export class Sessions {
       for (const k of kids) entry(spaceOfTab.get(tabOf.get(k.address)) ?? null).orphans.push(k);
     }
     this.urgency = urgency;
+    // In the order they were dragged to, not by urgency: their state still shows on each card.
+    for (const [id, e] of this.bySpace) {
+      e.parents = sessionsInOrder(id, e.parents);
+      e.orphans = sessionsInOrder(`${id}#orphans`, e.orphans);
+    }
+    for (const [parent, kids] of this.bg) this.bg.set(parent, sessionsInOrder(parent, kids));
     // agent.next walks the sessions in the order they're drawn.
     setAgentOrder([...sp.map((s) => s.id), null].flatMap((id) => this.bySpace.get(id)?.parents ?? []).map((a) => a.address));
 
@@ -506,8 +512,8 @@ export class Sessions {
     if (!e) return [];
     const t = theme();
     return [
-      ...e.parents.flatMap((a) => this.withKids(a, t)),
-      ...e.orphans.map((k, n) => this.nestedCard(t, this.P, k, this.now, n === e.orphans.length - 1)),
+      ...e.parents.map((a) => sessionItem(id, e.parents.map((x) => x.address), a.address, t, v_flex().flex_none().min_w(0).children(this.withKids(a, t)))),
+      ...e.orphans.map((k, n) => sessionItem(`${id}#orphans`, e.orphans.map((x) => x.address), k.address, t, this.nestedCard(t, this.P, k, this.now, n === e.orphans.length - 1))),
     ];
   }
 
@@ -519,7 +525,7 @@ export class Sessions {
       .text_size(12).font_semibold().text_color(t.muted).cursor_pointer().hover((x) => x.bg(t.hover).text_color(t.foreground))
       .tooltip(allFolded ? "Expand all sessions here" : "Minimise all sessions here")
       .on_click((_e, cx) => {
-        cx.stop_propagation();
+        (cancelDrag(), cx.stop_propagation());
         for (const address of addresses) allFolded ? folded.delete(address) : folded.add(address);
         setShared(COLLAPSED, [...folded]);
       })
@@ -547,7 +553,7 @@ export class Sessions {
       .when(active, (el) => el.bg(t.selected))
       .child(r.border(1).border_color(this.focusedTerm === a.address ? t.foreground : "#00000000"))
       .children(tail)
-      .when(open, (el) => el.children(nest.map((k, n) => this.nestedCard(t, this.P, k, this.now, n === nest.length - 1))))];
+      .when(open, (el) => el.children(nest.map((k, n) => sessionItem(a.address, nest.map((x) => x.address), k.address, t, this.nestedCard(t, this.P, k, this.now, n === nest.length - 1), 1))))];
   }
 
   // The fold chevron; folded, the count too, colored by the most urgent one.
@@ -568,7 +574,7 @@ export class Sessions {
       .cursor_pointer()
       .hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_click((_e, cx) => {
-        cx.stop_propagation();
+        (cancelDrag(), cx.stop_propagation());
         open ? this.folded.add(a.address) : this.folded.delete(a.address);
         cx.notify();
       })
@@ -596,7 +602,7 @@ export class Sessions {
       .hover((s) => s.bg(t.hover).text_color(t.foreground))
       .tooltip(isPinned ? "Unpin" : "Pin to the top of this space")
       .on_click((_e, cx) => {
-        cx.stop_propagation();
+        (cancelDrag(), cx.stop_propagation());
         run("terminal.pin", { terminal: a.address, pinned: !isPinned });
         // The row moves away from under the pointer, and no hover-out comes.
         this.hovered = null;
@@ -653,7 +659,7 @@ export class Sessions {
       .on_click(() => run("pane.focus", { pane: a.pane }))
       .when(Boolean(pic), (el) => el.child(div().id(`agent-fold-${a.address}`)
         .when(subs.length > 0, (e) => e.on_click((_e, cx) => {
-          cx.stop_propagation();
+          (cancelDrag(), cx.stop_propagation());
           this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address);
           cx.notify();
         })).child(pic)))

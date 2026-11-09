@@ -1,8 +1,21 @@
 #!/usr/bin/env python3
 """Assembles the space-tree mod from Herdr's spaces mod and the claude-cards mod."""
-import sys
+import re, sys
 from pathlib import Path
 here = Path(sys.argv[1]); out = Path(sys.argv[2])
+
+def arranged(text):
+    """A row's own drag code gives way to arrange.js, and anything that stops a mouse event ends a drag."""
+    text, n = re.subn(r"      \.on_mouse_move\(\(_e, cx\) => \{\n.*?\n      \}\)\n", "", text, count=1, flags=re.S)
+    assert n == 1, "row drag"
+    return arranged_stops(text)
+def arranged_stops(text):
+    return text.replace("cx.stop_propagation()", "(cancelDrag(), cx.stop_propagation())")
+ORDER_AT = "    // Simulate the batch so later indexes include earlier moves."
+ORDER_NEW = "    out.splice(0, out.length, ...arrangedRows(out, sp.map((w) => w.id)));\n"
+FINISH_OLD = '.on_mouse_up("left", (_e, cx) => { this.pressed = null; cx.notify(); })'
+FINISH_NEW = '.on_mouse_up("left", (_e, cx) => { this.pressed = null; finishDrag(); cx.notify(); })\n        .on_hover((on, cx) => { if (!on) { cancelDrag(); cx.notify(); } })'
+MAIN_IMPORT = 'import { GROUPS, groupFolded, toggleGroup, machinesInOrder, arrangedRows, finishDrag, cancelDrag, startDrag, dropArea, dropMachine, spaceItem } from "./arrange.js";\n'
 cards = (here / "claude-cards.js").read_text().split("\n")
 lines = lambda a, b: "\n".join(cards[a - 1:b]) + "\n"
 def expect(line, text):
@@ -19,6 +32,7 @@ head = '''// Sessions for the space tree: the same cards, stats, folding and hov
 import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, run, theme, settings, shared, setShared, setAgentOrder, openOverlay } from "herdr";
+import { byAddress, cancelDrag, sessionItem, sessionsInOrder } from "./arrange.js";
 
 '''
 s = head + lines(18, 27) + "\n" + lines(29, 42) + "\n" + lines(44, 71) + "\n" + lines(73, 85) + "\n" + lines(87, 104) + "\n" + lines(106, 111) + "\n"
@@ -51,7 +65,7 @@ s = sub(s, '    const machine = k.address.includes("/") ? k.address.split("/")[0
 sys.path.insert(0, str(here))
 from detached import apply as add_detached
 s = add_detached("cards", s)
-(out / "sessions.js").write_text(s)
+(out / "sessions.js").write_text(arranged_stops(s))
 
 m = (here / "spaces.js").read_text()
 m = sub(m, '''// Workspace spaces: stable colored avatars, worktrees under their checkout,
@@ -65,7 +79,7 @@ m = sub(m, '''// Workspace spaces: stable colored avatars, worktrees under their
 // there are and the most urgent state. The buttons on a section and on a space minimise just their own cards.
 ''')
 m = sub(m, 'import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";\n',
- 'import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";\nimport { Sessions } from "./sessions.js";\n')
+ 'import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";\nimport { Sessions } from "./sessions.js";\n' + MAIN_IMPORT)
 m = sub(m, '''const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 ''', '''const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 
@@ -126,6 +140,10 @@ m = m[:a] + '''    this.sessions.prepare(sp);
   }
 }
 '''
+m = sub(m, ORDER_AT, ORDER_NEW + ORDER_AT)
+m = sub(m, FINISH_OLD, FINISH_NEW)
+m = arranged(m)
 (out / "main.js").write_text(m)
+(out / "arrange.js").write_text((here / "arrange.js").read_text())
 (out / "mod.json").write_text('{ "place": "none", "title": "Spaces and sessions" }\n')
 print("built", out)

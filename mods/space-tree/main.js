@@ -8,6 +8,7 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";
 import { Sessions } from "./sessions.js";
+import { GROUPS, groupFolded, toggleGroup, machinesInOrder, arrangedRows, finishDrag, cancelDrag, startDrag, dropArea, dropMachine, spaceItem } from "./arrange.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -287,6 +288,7 @@ export default class Spaces extends View {
       const kids = list.filter((k) => nested(k) && k.g.repo === r.g.repo);
       kids.forEach((k, n) => out.push({ ...k, tree: n === kids.length - 1 ? "└─" : "├─" }));
     }
+    out.splice(0, out.length, ...arrangedRows(out, sp.map((w) => w.id)));
     // Simulate the batch so later indexes include earlier moves. An attempted
     // write can lose a sync conflict: allow the echo to settle before retrying.
     const order = sp.map(w => w.id);
@@ -345,7 +347,7 @@ export default class Spaces extends View {
     return div().id("tree-toggle").size(20).flex_none().flex().items_center().justify_center().rounded(4).bg(t.selected).text_color(t.accent)
       .cursor_pointer().tooltip("Back to separate Spaces and Agents lists")
       .on_click((_e, cx) => {
-        cx.stop_propagation();
+        (cancelDrag(), cx.stop_propagation());
         for (const id of ["spaces", "agents"]) run("layout.show", { id });
         run("layout.hide", { id: "tree" });
         run("layout.resize", { id: "sidebar", px: 268 });
@@ -353,14 +355,29 @@ export default class Spaces extends View {
       .child(svg("mods/workspace-chrome/layers.svg").size(13));
   }
 
-  // A machine's rows: each space with its sessions nested below it.
+  // Personal or Work, inside a machine: click to fold it, and drop a space on it to file it there.
+  groupHead(machine, group, rows, t) {
+    const key = `group:${group}:${machine ?? "local"}`;
+    const folded = groupFolded(machine, group);
+    const waiting = folded ? this.sessions.waiting(rows.filter((r) => r.group === group).map((r) => r.w.id)) : 0;
+    return dropArea({ kind: "space", scope: String(machine ?? null), key, heading: true }, t,
+      h_flex().id(`drag-space-${key}`).h(26).flex_none().px(8).gap(7).items_center().text_size(11.5).font_family("Helvetica Neue").font_weight(700).text_color(t.foreground)
+        .cursor_pointer().hover((s) => s.bg(t.hover))
+        .on_click((_e, cx) => { toggleGroup(machine, group); cx.notify(); })
+        .child(div().flex_1().min_w(0).truncate().child(group === "work" ? "Work" : "Personal"))
+        .when(waiting > 0, (el) => el.child(div().flex_none().text_size(11).font_weight(400).text_color(t.blocked).child(`${waiting} waiting`)))
+        .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none()));
+  }
+
+  // A machine's rows: Personal then Work, each space with its sessions nested below it.
   spaceRows(rows, machine, known, t) {
     const S = this.sessions;
     const nest = (children, tree) => v_flex().flex_none().ml(tree ? 38 : 16).pl(6).mt(4).mb(4).border_l(1).border_color(t.border).children(children);
-    const out = rows.flatMap((r) => {
+    const draw = (r) => {
       const kids = this.spaceFolded.has(r.w.id) ? [] : S.rowsFor(r.w.id);
-      return [this.row(r, t), ...(kids.length ? [nest(kids, r.tree)] : [])];
-    });
+      return [r.tree ? this.row(r, t) : spaceItem(r, this.rowsNow, t, this.row(r, t)), ...(kids.length ? [nest(kids, r.tree)] : [])];
+    };
+    const out = rows.length ? GROUPS.flatMap((g) => [this.groupHead(machine, g, rows, t), ...(groupFolded(machine, g) ? [] : rows.filter((r) => r.group === g).flatMap(draw))]) : [];
     // Nothing goes missing: a session in a space not on the list still shows.
     const stray = S.elsewhere(known, machine).flatMap((id) => S.rowsFor(id));
     if (stray.length) {
@@ -380,16 +397,18 @@ export default class Spaces extends View {
   plusButton(m, t) {
     return div().id(`machine-add-${m ?? "local"}`).flex_none().px(4).rounded(4).text_size(13).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .tooltip(`New space on ${m ?? "this computer"}`)
-      .on_click((_e, cx) => { cx.stop_propagation(); run("space.new", { machine: m ?? "" }); }).child("+");
+      .on_click((_e, cx) => { (cancelDrag(), cx.stop_propagation()); run("space.new", { machine: m ?? "" }); }).child("+");
   }
 
   // Local, then Remote with one line per machine under it.
   grouped(t, collapsed) {
     const rows = this.ordered();
+    this.rowsNow = rows;
     if (collapsed) return rows.map((r) => this.compact(r, t));
     const S = this.sessions;
     const known = new Set(rows.map((r) => r.w.id));
     const remote = [...new Set([...rows.map((r) => r.w.machine).filter(Boolean), ...this.machines.map((m) => m.name), ...Object.keys(this.reconnecting)])].sort();
+    const remoteOrder = machinesInOrder(remote);
     const loading = (m) => {
       const layout = machines().find((k) => k.name === m)?.layout;
       return layout === "loading" || (!layout && this.machines.some((k) => k.name === m && k.state === "connected"))
@@ -422,13 +441,14 @@ export default class Spaces extends View {
     out.push(this.sectionHead("remote", "Remote", "server", this.remoteFolded, remote.flatMap(idsOn), toggleRemote, null, t));
     if (this.remoteFolded) return out;
 
-    for (const m of remote) {
+    for (const m of remoteOrder) {
       const repair = this.reconnecting[m];
       const machine = this.machines.find((k) => k.name === m) ?? repair?.machine;
       const connected = machine?.state === "connected";
       const rebuilt = this.rebuilt(machine) || !!repair;
       const folded = this.folded.has(m);
-      out.push(h_flex().id(`machine-${m}`).h(26).flex_none().pl(8).pr(8).gap(7).items_center().rounded(7).text_size(13).text_color(t.dim)
+      const item = { kind: "machine", scope: "remote", key: m, onDrop: (over, before) => dropMachine(remoteOrder, m, over, before) };
+      const head = (h_flex().id(`machine-${m}`).on_mouse_down("left", startDrag(item)).h(26).flex_none().pl(8).pr(8).gap(7).items_center().rounded(7).text_size(13).text_color(t.dim)
         .cursor_pointer().hover((s) => s.bg(t.hover))
         .on_click((_e, cx) => {
           folded ? this.folded.delete(m) : this.folded.add(m);
@@ -444,11 +464,11 @@ export default class Spaces extends View {
           .child(div().id(`machine-connect-${m}`).text_color(repair?.error ? t.blocked : t.muted)
             .hover((s) => s.text_color(t.foreground))
             .tooltip(repair?.error || "This machine was rebuilt or replaced. Click to connect to the new one.")
-            .on_click((_e, cx) => { cx.stop_propagation(); this.reconnect(machine, cx); })
+            .on_click((_e, cx) => { (cancelDrag(), cx.stop_propagation()); this.reconnect(machine, cx); })
             .child(repair?.busy ? "Connecting…" : "Connect"))))
         .when(connected, (el) => el.child(this.plusButton(m, t)))
         .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none()));
-      if (!folded && !rebuilt) out.push(...body(m));
+      out.push(dropArea(item, t, v_flex().id(`drag-machine-${m}`).flex_none().min_w(0).child(head).children(!folded && !rebuilt ? body(m) : [])));
     }
     return out;
   }
@@ -501,14 +521,6 @@ export default class Spaces extends View {
         this.pressed = w.id;
         this.over = w.id;
       })
-      .on_mouse_move((_e, cx) => {
-        const source = spaces().find(s => s.id === this.pressed);
-        const over = source && (source.machine ?? null) === (w.machine ?? null) ? w.id : null;
-        if (this.pressed !== null && this.over !== over) {
-          this.over = over;
-          cx.notify();
-        }
-      })
       .on_mouse_up("left", (_e, cx) => {
         const from = this.pressed;
         const over = this.over;
@@ -536,7 +548,7 @@ export default class Spaces extends View {
 
   // Minimises or expands every card in this space. Row presses switch space, so it stops its own.
   spaceMinAll(w, t) {
-    const stop = (_e, cx) => cx.stop_propagation();
+    const stop = (_e, cx) => (cancelDrag(), cx.stop_propagation());
     return div().id(`space-min-all-${w.id}`).flex_none().on_mouse_down("left", stop).on_mouse_up("left", stop)
       .child(this.sessions.minAllButton(w.id, this.sessions.foldable([w.id]), t));
   }
@@ -545,12 +557,12 @@ export default class Spaces extends View {
   spaceFold(w, t) {
     const S = this.sessions;
     const folded = this.spaceFolded.has(w.id);
-    const stop = (_e, cx) => cx.stop_propagation();
+    const stop = (_e, cx) => (cancelDrag(), cx.stop_propagation());
     return h_flex().id(`space-fold-${w.id}`).h(20).flex_none().px(3).gap(4).items_center().rounded(4).text_size(11).text_color(t.dim)
       .cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
       .tooltip(folded ? "Show this space's sessions" : "Hide this space's sessions")
       .on_mouse_down("left", stop).on_mouse_up("left", stop)
-      .on_click((_e, cx) => { cx.stop_propagation(); this.toggleSpace(w.id, cx); })
+      .on_click((_e, cx) => { (cancelDrag(), cx.stop_propagation()); this.toggleSpace(w.id, cx); })
       .when(folded, (el) => el.child(S.status(t, { status: S.topStatus(w.id) }, true)).child(String(S.count(w.id))))
       .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none());
   }
@@ -589,7 +601,8 @@ export default class Spaces extends View {
     this.sessions.prepare(sp);
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
       .child(v_flex().id("space-tree").flex_1().min_h(0).px(collapsed ? 0 : 8).pt(collapsed ? 6 : 0).pb(14).overflow_y_scrollbar().mode("always")
-        .on_mouse_up("left", (_e, cx) => { this.pressed = null; cx.notify(); })
+        .on_mouse_up("left", (_e, cx) => { this.pressed = null; finishDrag(); cx.notify(); })
+        .on_hover((on, cx) => { if (!on) { cancelDrag(); cx.notify(); } })
         .children(this.grouped(t, collapsed)))
       // On the macOS rail the traffic lights cover the header's own button.
       .when(collapsed, (el) => el.child(h_flex().h(28).flex_none().items_center().justify_center()

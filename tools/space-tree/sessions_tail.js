@@ -18,8 +18,7 @@
     this.hold(list);
 
     const urgency = new Map(list.map((a) => [a.address, Math.max(this.rank(a), ...this.tree(all, a.address).map((s) => RANK[kidStatus(s.t, this.listed)] ?? 0))]));
-    const sorted = [...list].sort((x, y) => Number(y.pinned) - Number(x.pinned)
-      || urgency.get(y.address) - urgency.get(x.address) || this.since(y) - this.since(x) || y.seq - x.seq);
+    const sorted = [...list].sort(byAddress);
 
     // Which space each session sits under: by its tab, which says so on any machine.
     const spaceOfTab = new Map(sp.flatMap((s) => (s.tabs ?? []).map((tab) => [tab.id, s.id])));
@@ -37,6 +36,12 @@
       for (const k of kids) entry(spaceOfTab.get(tabOf.get(k.address)) ?? null).orphans.push(k);
     }
     this.urgency = urgency;
+    // In the order they were dragged to, not by urgency: their state still shows on each card.
+    for (const [id, e] of this.bySpace) {
+      e.parents = sessionsInOrder(id, e.parents);
+      e.orphans = sessionsInOrder(`${id}#orphans`, e.orphans);
+    }
+    for (const [parent, kids] of this.bg) this.bg.set(parent, sessionsInOrder(parent, kids));
     // agent.next walks the sessions in the order they're drawn.
     setAgentOrder([...sp.map((s) => s.id), null].flatMap((id) => this.bySpace.get(id)?.parents ?? []).map((a) => a.address));
 
@@ -95,8 +100,8 @@
     if (!e) return [];
     const t = theme();
     return [
-      ...e.parents.flatMap((a) => this.withKids(a, t)),
-      ...e.orphans.map((k, n) => this.nestedCard(t, this.P, k, this.now, n === e.orphans.length - 1)),
+      ...e.parents.map((a) => sessionItem(id, e.parents.map((x) => x.address), a.address, t, v_flex().flex_none().min_w(0).children(this.withKids(a, t)))),
+      ...e.orphans.map((k, n) => sessionItem(`${id}#orphans`, e.orphans.map((x) => x.address), k.address, t, this.nestedCard(t, this.P, k, this.now, n === e.orphans.length - 1))),
     ];
   }
 
@@ -136,7 +141,7 @@
       .when(active, (el) => el.bg(t.selected))
       .child(r.border(1).border_color(this.focusedTerm === a.address ? t.foreground : "#00000000"))
       .children(tail)
-      .when(open, (el) => el.children(nest.map((k, n) => this.nestedCard(t, this.P, k, this.now, n === nest.length - 1))))];
+      .when(open, (el) => el.children(nest.map((k, n) => sessionItem(a.address, nest.map((x) => x.address), k.address, t, this.nestedCard(t, this.P, k, this.now, n === nest.length - 1), 1))))];
   }
 
   // The fold chevron; folded, the count too, colored by the most urgent one.

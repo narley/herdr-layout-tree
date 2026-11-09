@@ -42,14 +42,29 @@
       .child(svg("mods/workspace-chrome/layers.svg").size(13));
   }
 
-  // A machine's rows: each space with its sessions nested below it.
+  // Personal or Work, inside a machine: click to fold it, and drop a space on it to file it there.
+  groupHead(machine, group, rows, t) {
+    const key = `group:${group}:${machine ?? "local"}`;
+    const folded = groupFolded(machine, group);
+    const waiting = folded ? this.sessions.waiting(rows.filter((r) => r.group === group).map((r) => r.w.id)) : 0;
+    return dropArea({ kind: "space", scope: String(machine ?? null), key, heading: true }, t,
+      h_flex().id(`drag-space-${key}`).h(26).flex_none().px(8).gap(7).items_center().text_size(11.5).font_family("Helvetica Neue").font_weight(700).text_color(t.foreground)
+        .cursor_pointer().hover((s) => s.bg(t.hover))
+        .on_click((_e, cx) => { toggleGroup(machine, group); cx.notify(); })
+        .child(div().flex_1().min_w(0).truncate().child(group === "work" ? "Work" : "Personal"))
+        .when(waiting > 0, (el) => el.child(div().flex_none().text_size(11).font_weight(400).text_color(t.blocked).child(`${waiting} waiting`)))
+        .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none()));
+  }
+
+  // A machine's rows: Personal then Work, each space with its sessions nested below it.
   spaceRows(rows, machine, known, t) {
     const S = this.sessions;
     const nest = (children, tree) => v_flex().flex_none().ml(tree ? 38 : 16).pl(6).mt(4).mb(4).border_l(1).border_color(t.border).children(children);
-    const out = rows.flatMap((r) => {
+    const draw = (r) => {
       const kids = this.spaceFolded.has(r.w.id) ? [] : S.rowsFor(r.w.id);
-      return [this.row(r, t), ...(kids.length ? [nest(kids, r.tree)] : [])];
-    });
+      return [r.tree ? this.row(r, t) : spaceItem(r, this.rowsNow, t, this.row(r, t)), ...(kids.length ? [nest(kids, r.tree)] : [])];
+    };
+    const out = rows.length ? GROUPS.flatMap((g) => [this.groupHead(machine, g, rows, t), ...(groupFolded(machine, g) ? [] : rows.filter((r) => r.group === g).flatMap(draw))]) : [];
     // Nothing goes missing: a session in a space not on the list still shows.
     const stray = S.elsewhere(known, machine).flatMap((id) => S.rowsFor(id));
     if (stray.length) {
@@ -75,10 +90,12 @@
   // Local, then Remote with one line per machine under it.
   grouped(t, collapsed) {
     const rows = this.ordered();
+    this.rowsNow = rows;
     if (collapsed) return rows.map((r) => this.compact(r, t));
     const S = this.sessions;
     const known = new Set(rows.map((r) => r.w.id));
     const remote = [...new Set([...rows.map((r) => r.w.machine).filter(Boolean), ...this.machines.map((m) => m.name), ...Object.keys(this.reconnecting)])].sort();
+    const remoteOrder = machinesInOrder(remote);
     const loading = (m) => {
       const layout = machines().find((k) => k.name === m)?.layout;
       return layout === "loading" || (!layout && this.machines.some((k) => k.name === m && k.state === "connected"))
@@ -111,13 +128,14 @@
     out.push(this.sectionHead("remote", "Remote", "server", this.remoteFolded, remote.flatMap(idsOn), toggleRemote, null, t));
     if (this.remoteFolded) return out;
 
-    for (const m of remote) {
+    for (const m of remoteOrder) {
       const repair = this.reconnecting[m];
       const machine = this.machines.find((k) => k.name === m) ?? repair?.machine;
       const connected = machine?.state === "connected";
       const rebuilt = this.rebuilt(machine) || !!repair;
       const folded = this.folded.has(m);
-      out.push(h_flex().id(`machine-${m}`).h(26).flex_none().pl(8).pr(8).gap(7).items_center().rounded(7).text_size(13).text_color(t.dim)
+      const item = { kind: "machine", scope: "remote", key: m, onDrop: (over, before) => dropMachine(remoteOrder, m, over, before) };
+      const head = (h_flex().id(`machine-${m}`).on_mouse_down("left", startDrag(item)).h(26).flex_none().pl(8).pr(8).gap(7).items_center().rounded(7).text_size(13).text_color(t.dim)
         .cursor_pointer().hover((s) => s.bg(t.hover))
         .on_click((_e, cx) => {
           folded ? this.folded.delete(m) : this.folded.add(m);
@@ -137,7 +155,7 @@
             .child(repair?.busy ? "Connecting…" : "Connect"))))
         .when(connected, (el) => el.child(this.plusButton(m, t)))
         .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none()));
-      if (!folded && !rebuilt) out.push(...body(m));
+      out.push(dropArea(item, t, v_flex().id(`drag-machine-${m}`).flex_none().min_w(0).child(head).children(!folded && !rebuilt ? body(m) : [])));
     }
     return out;
   }
