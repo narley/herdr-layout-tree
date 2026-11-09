@@ -3,7 +3,7 @@
 // Stats come from the terminal label `claude.stats`, written by ~/.config/herdr/claude-desktop.sh.
 import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, run, theme, settings, shared, setShared, setAgentOrder, openOverlay } from "herdr";
+import { hc, notify, agents, terminals, panes, focused, run, theme, settings, shared, setShared, setAgentOrder, openOverlay } from "herdr";
 
 const TUI = { working: "#72fd9d", idle: "#4df5ff", done: "#d898ff", blocked: "#ff6f8e", unknown: "#ffe15c",
   spend: "#86b383", rc: "#b86f86", amber: "#fab387", red: "#f38ba8", sub: "#a6adc8" };
@@ -12,7 +12,7 @@ const palette = (t) => settings()?.dark === false
       spend: t.ansi2, rc: t.ansi5, amber: t.ansi3, red: t.ansi1, sub: t.muted }
   : TUI;
 // Player controls, as in the TUI: play, paused (waiting for you), stopped (not seen yet), needs you.
-const GLYPH = { working: "▶", idle: "▮▮", done: "■", blocked: "◆" };
+const GLYPH = { detached: "○", working: "▶", idle: "▮▮", done: "■", blocked: "◆" };
 const COLLAPSED = "claude.cards.collapsed";
 const SUB_FRESH_S = 90;   // a subagent count older than this (no watcher left) is dropped
 
@@ -74,6 +74,24 @@ function actionButtons(a, s, kids, t) {
     .when(s?.loc === "wt" && Boolean(s?.dir), (el) => el.child(chip("act-wt", svg("mods/space-tree/bin.svg").size(12).text_color(t.accent), "Close this session and delete its worktree", "worktree")));
 }
 
+// An attached session's pane can lose Claude (a restart, a crash) and fall back to a shell, while
+// its old labels stay. Such a card is DETACHED, and clicking it reattaches: it only types when the
+// pane is at a shell prompt, so anything else running there just gets focus.
+const detachedFrom = (t) => {
+  const fg = t.foreground;
+  return Boolean(fg) && !(fg.argv ?? []).join(" ").includes("claude") && !/^\d+\.\d+\.\d+/.test(fg.name ?? "");
+};
+const atShell = (t) => /^-?(zsh|bash|fish|sh|dash)$/.test(String(t.foreground?.name ?? "").split("/").pop());
+async function reattach(k) {
+  run("pane.focus", { terminal: k.address });
+  if (!k.shell || !/^[A-Za-z0-9_-]+$/.test(k.bg ?? "")) return;
+  const profile = k.stats?.profile;
+  const config = profile && profile !== "default" && /^[A-Za-z0-9_-]+$/.test(profile) ? `CLAUDE_CONFIG_DIR="$HOME/.claude-${profile}" ` : "";
+  await hc(["keys", k.address, "ctrl+u"]);   // anything half-typed at the prompt
+  const r = await hc(["send", k.address, `${config}claude attach ${k.bg}`]);
+  if (r.code !== 0) notify({ title: "Couldn't reattach", body: (r.stderr || r.stdout || "").trim(), level: "error" });
+}
+
 // Attached background sessions (`claude --bg` in a child terminal labelled claude.bg), by
 // their parent's address, as agent-shaped rows. Their stats label names the parent.
 function bgChildren(all) {
@@ -86,8 +104,8 @@ function bgChildren(all) {
     if (!s.parent) continue;
     const machine = t.address.includes("/") ? `${t.address.split("/")[0]}/` : "";
     const key = `${machine}${s.parent}`;
-    const status = s.state === "working" || s.state === "busy" ? "working" : /input|wait|block/.test(s.state ?? "") ? "blocked" : "idle";
-    out.set(key, [...(out.get(key) ?? []), { address: t.address, app: "claude-code", status, focused: false, bg: t.labels["claude.bg"], tab_name: s.name ?? t.address, stats: s }]);
+    const status = detachedFrom(t) ? "detached" : s.state === "working" || s.state === "busy" ? "working" : /input|wait|block/.test(s.state ?? "") ? "blocked" : "idle";
+    out.set(key, [...(out.get(key) ?? []), { address: t.address, app: "claude-code", status, shell: atShell(t), focused: false, bg: t.labels["claude.bg"], tab_name: s.name ?? t.address, stats: s }]);
   }
   for (const kids of out.values()) kids.sort((x, y) => String(x.stats.name ?? x.address).localeCompare(String(y.stats.name ?? y.address)));
   return out;
@@ -381,11 +399,13 @@ export class Sessions {
           else if (this.hovered === k.address) this.hovered = null;
           cx.notify();
         })
-        .on_click(() => run("pane.focus", { terminal: k.address }))
+        .on_click(() => (k.status === "detached" ? reattach(k) : run("pane.focus", { terminal: k.address })))
         .child(h_flex().h(30).flex_none().items_center().gap(9)
           .child(this.glyph(t, P, k))
           .child(div().flex_1().min_w(0).truncate().font_semibold().text_color(k.status === "idle" && !selected ? t.muted : t.foreground).child(s.name || "claude")))
-        .when(!folded, (el) => el.child(this.details(t, P, k, s, now)))
+        .when(!folded, (el) => el.child(k.status === "detached"
+          ? v_flex().pl(25).pb(6).text_size(12).text_color(t.accent).child("Detached. Click to reattach")
+          : this.details(t, P, k, s, now)))
         .when(this.hovered === k.address, (el) => el.child(actionButtons(k, s, [], t).absolute().right(6).bottom(6))));
   }
 

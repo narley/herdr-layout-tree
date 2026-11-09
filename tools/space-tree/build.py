@@ -48,6 +48,9 @@ s = sub(s, """    folded.has(address) ? folded.delete(address) : folded.add(addr
 # Under Local or Remote, a nested card needn't name its machine.
 s = sub(s, "\n          .when(Boolean(machine), (el) => el.child(div().text_size(10).text_color(t.dim).child(machine))))\n        .when(!folded, (el) => el.child(this.details(t, P, k, s, now)))", ")\n        .when(!folded, (el) => el.child(this.details(t, P, k, s, now)))")
 s = sub(s, '    const machine = k.address.includes("/") ? k.address.split("/")[0] : null;\n    const selected', "    const selected")
+sys.path.insert(0, str(here))
+from detached import apply as add_detached
+s = add_detached("cards", s)
 (out / "sessions.js").write_text(s)
 
 m = (here / "spaces.js").read_text()
