@@ -40,6 +40,9 @@ Drag machines, spaces and sessions to put them in the order you want. Each machi
 heading to fold it, and drop a space on a row or heading to move it into that group. Spaces start in Personal. The arrangement
 is saved in Herdr's shared settings as `tree.arrange`, so every layout's tree shows the same one.
 
+A new space joins the group of the space showing when it's made, if that's on the same machine. The `>_` button on a space
+opens Herdr's new-tab menu for that space: a terminal or any installed agent.
+
 ## What's here
 
 | Path | What it is |

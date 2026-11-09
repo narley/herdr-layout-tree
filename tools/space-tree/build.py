@@ -15,7 +15,7 @@ ORDER_AT = "    // Simulate the batch so later indexes include earlier moves."
 ORDER_NEW = "    out.splice(0, out.length, ...arrangedRows(out, sp.map((w) => w.id)));\n"
 FINISH_OLD = '.on_mouse_up("left", (_e, cx) => { this.pressed = null; cx.notify(); })'
 FINISH_NEW = '.on_mouse_up("left", (_e, cx) => { this.pressed = null; finishDrag(); cx.notify(); })\n        .on_hover((on, cx) => { if (!on) { cancelDrag(); cx.notify(); } })'
-MAIN_IMPORT = 'import { GROUPS, groupFolded, toggleGroup, machinesInOrder, arrangedRows, finishDrag, cancelDrag, startDrag, dropArea, dropMachine, spaceItem } from "./arrange.js";\n'
+MAIN_IMPORT = 'import { GROUPS, newTabButton, groupFolded, toggleGroup, machinesInOrder, arrangedRows, finishDrag, cancelDrag, startDrag, dropArea, dropMachine, spaceItem } from "./arrange.js";\n'
 cards = (here / "claude-cards.js").read_text().split("\n")
 lines = lambda a, b: "\n".join(cards[a - 1:b]) + "\n"
 def expect(line, text):
@@ -102,6 +102,7 @@ m = sub(m, '''          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex
       );
   }
 ''', '''          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
+          .child(newTabButton(w, t))
           .when(!this.spaceFolded.has(w.id) && this.sessions.foldable([w.id]).length > 0, (el) => el.child(this.spaceMinAll(w, t)))
           .when(this.sessions.count(w.id) > 0, (el) => el.child(this.spaceFold(w, t))),
       );

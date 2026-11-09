@@ -2,9 +2,9 @@
 // so every layout's tree agrees: { groups: {spaceId: "work"}, machines: [names], sessions: {scope: [addresses]} }.
 // Herdr keeps spaces in its own order, so a space's group and position are written back with
 // space.move (ordered() does that); machines and sessions have no such order and live only here.
-import { div } from "gpui-kit";
+import { div, svg } from "gpui-kit";
 import { v_flex } from "gpui-base";
-import { shared, setShared, run } from "herdr";
+import { shared, setShared, run, openOverlay } from "herdr";
 
 const KEY = "tree.arrange";
 const SETTLE_MS = 15000;
@@ -53,8 +53,28 @@ export function sessionsInOrder(scope, items) {
 // The order just dropped, held until Herdr's own order catches up: a remote machine's can lag.
 let settling = null;
 
+// A new space joins the group of the space that was showing when it was made, if it's on the same
+// machine. Herdr shows a new space at once; a machine coming back brings several, or doesn't show them,
+// so only one unseen space that's now showing counts as new.
+let seen = null;
+let before = null;
+function adoptNewSpace(rows) {
+  const fresh = rows.filter((r) => !seen?.has(r.w.id));
+  const made = seen && fresh.length === 1 && !fresh[0].tree && fresh[0].w.active ? fresh[0].w : null;
+  if (made && before?.group === "work" && before.machine === (made.machine ?? null)) {
+    save({ groups: { ...(stored().groups ?? {}), [made.id]: "work" } });
+  }
+  seen = new Set([...(seen ?? []), ...rows.map((r) => r.w.id)]);
+  let head = null;
+  for (const r of rows) {
+    if (!r.tree) head = r;
+    if (r.w.active && head) before = { group: groupOf(head.w.id), machine: head.w.machine ?? null };
+  }
+}
+
 // Each machine's rows: Personal then Work, worktrees staying under their checkout.
 export function arrangedRows(rows, core) {
+  adoptNewSpace(rows);
   const blocks = [];
   for (const r of rows) {
     if (r.tree && blocks.length) blocks.at(-1).push(r);
@@ -180,4 +200,22 @@ export function sessionItem(scope, keys, key, t, el, level = 0) {
 export function spaceItem(r, rows, t, el) {
   const key = r.w.id;
   return draggable({ kind: "space", scope: String(r.w.machine ?? null), key, onDrop: (over, before) => dropSpace(key, over, before, rows) }, t, el);
+}
+
+// ---- starting something in a space ----
+// Herdr's own menu, as the tab bar's button opens: a terminal or any agent, in a new tab of this space.
+// It acts on the shown space, so that comes first. A row's press switches space or starts a drag,
+// so this button stops its own.
+export function newTabButton(w, t) {
+  const stop = (_e, cx) => { cancelDrag(); cx.stop_propagation(); };
+  return div().id(`space-new-tab-${w.id}`).size(18).flex_none().flex().items_center().justify_center().rounded(4).text_color(t.dim)
+    .cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+    .tooltip("New terminal or agent here")
+    .on_mouse_down("left", stop).on_mouse_up("left", stop)
+    .on_click((e, cx) => {
+      stop(e, cx);
+      run("space.select", { id: w.id });
+      openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 });
+    })
+    .child(svg("mods/workspace-chrome/terminal.svg").size(12));
 }

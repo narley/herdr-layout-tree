@@ -8,7 +8,7 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";
 import { Sessions } from "./sessions.js";
-import { GROUPS, groupFolded, toggleGroup, machinesInOrder, arrangedRows, finishDrag, cancelDrag, startDrag, dropArea, dropMachine, spaceItem } from "./arrange.js";
+import { GROUPS, newTabButton, groupFolded, toggleGroup, machinesInOrder, arrangedRows, finishDrag, cancelDrag, startDrag, dropArea, dropMachine, spaceItem } from "./arrange.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -541,6 +541,7 @@ export default class Spaces extends View {
           .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
           .child(div().flex_shrink(0).max_w(150).truncate().font_family("Helvetica Neue").font_weight(400).text_color(t.muted).child(w.name))
           .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
+          .child(newTabButton(w, t))
           .when(!this.spaceFolded.has(w.id) && this.sessions.foldable([w.id]).length > 0, (el) => el.child(this.spaceMinAll(w, t)))
           .when(this.sessions.count(w.id) > 0, (el) => el.child(this.spaceFold(w, t))),
       );
