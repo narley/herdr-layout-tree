@@ -12,7 +12,7 @@ with Herdr Desktop. Built against Herdr Desktop 0.1.14.
 herdr-app do layout.switch --name herdr-tree
 ```
 
-The script copies `layouts/`, `themes/` and `mods/` into `~/.config/herdr-app` (or `$HERDR_APP_HOME`), and `scripts/`
+The script copies `layouts/`, `themes/`, `mods/` and `programs.json` into `~/.config/herdr-app` (or `$HERDR_APP_HOME`), and `scripts/`
 into `~/.config/herdr`. It saves any files it replaces to `backups/` in the Herdr home first. Mods reload by themselves.
 
 ## Claude Code stats
@@ -43,6 +43,13 @@ is saved in Herdr's shared settings as `tree.arrange`, so every layout's tree sh
 A new space joins the group of the space showing when it's made, if that's on the same machine. The `>_` button on a space
 opens Herdr's new-tab menu for that space: a terminal or any installed agent.
 
+## Claude in the new-tab menu
+
+`programs.json` adds **Claude (personal)** and **Claude (work)** to Herdr's new-tab menu (the `+` in the tab bar, and `>_` on a space in the tree). They run the
+shell aliases `ccp` and `ccw` from `~/.zshrc` on the machine the space is on, which start Claude Code with
+`~/.claude-personal` or `~/.claude-work` as its config; on a machine without them they start nothing. The install
+script adds the two entries to any `programs.json` already in the Herdr home, keeping its others.
+
 ## What's here
 
 | Path | What it is |
@@ -50,6 +57,7 @@ opens Herdr's new-tab menu for that space: a terminal or any installed agent.
 | `layouts/` | The layout, and its picture for the settings screen, if it has one |
 | `mods/` | Its sidebar and other mods, including the Close / Delete worktree dialog (`session-actions`) |
 | `scripts/` | The stats script |
+| `programs.json` | The two Claude entries for the new-tab menu |
 | `tools/` | Scripts that generate parts of it (not needed to install) |
 
 See `NOTICE.md` for what this derives from.
