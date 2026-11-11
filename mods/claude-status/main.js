@@ -105,7 +105,12 @@ export default class ClaudeStatus extends View {
     const parts = [];
     list.forEach(({ profile, rl }, i) => {
       if (i > 0) parts.push(span("  |  ", t.dim));
-      if (list.length > 1) parts.push(span(`${profile} `, t.dim));
+      if (list.length > 1) {
+        // Which account these limits belong to, at a glance: a badge in the profile's own colour.
+        const tone = { personal: t.ansi6, work: t.ansi5 }[profile] ?? t.foreground;
+        parts.push(div().flex_none().px(5).rounded(3).bg(tone).text_color(t.chrome).text_size(10).font_semibold().child(profile.toUpperCase()));
+        parts.push(span(" ", t.dim));
+      }
       let first = true;
       for (const [key, short] of WINDOWS) {
         const w = rl[key];
