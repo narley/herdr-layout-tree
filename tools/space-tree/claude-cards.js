@@ -653,7 +653,7 @@ export default class Agents extends View {
               .child(div().min_w(0).truncate().font_semibold().text_color(idle ? t.muted : t.foreground).child(stats.name || name || "claude")))
             .when(Boolean(machine), (el) => el.child(div().text_size(10).text_color(t.dim).child(machine)))
             .when(subs.length > 0, (el) => el.child(fold(a, subs)))
-            .when(this.hovered === a.address, (el) => el.child(pin).child(this.foldButton(t, a, folded))))
+            .when(this.hovered === a.address, (el) => el.when(folded, (x) => x.child(actionButtons(a, stats, bg.get(a.address) ?? [], t))).child(pin).child(this.foldButton(t, a, folded))))
           .when(!folded, (el) => el.child(this.details(t, P, a, stats, now)))
           .when(this.hovered === a.address && !folded, (el) => el.child(actionButtons(a, stats, bg.get(a.address) ?? [], t).absolute().right(6).bottom(6)));
       }
