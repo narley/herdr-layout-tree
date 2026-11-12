@@ -4,7 +4,7 @@
 //   work 5h 30% · 7d 8%  |  personal 7d 2%   (both reporting)
 // Read from the newest `claude.stats` terminal label per profile (written by
 // ~/.config/herdr/claude-desktop.sh on each machine); reports older than 12 h are
-// ignored, a window whose reset has passed shows "—". Amber from 75%, red from 90%,
+// ignored, a window whose reset has passed shows "—". Green, yellow from 50%, orange from 75%, red from 90%,
 // and a notification the first time a window passes 75% and again at 90%.
 
 import { View, div, svg } from "gpui-kit";
@@ -99,7 +99,7 @@ export default class ClaudeStatus extends View {
     const list = limits(now);
     if (!list.length) return null;
     const dark = settings()?.dark !== false;
-    const amber = dark ? "#fab387" : t.ansi3;
+    const green = dark ? "#a6e3a1" : t.ansi2, yellow = dark ? "#f9e2af" : "#b58900", amber = dark ? "#fab387" : "#d9730d";
     const red = dark ? "#f38ba8" : t.ansi1;
     const span = (text, color = t.muted, bold = false) => div().flex_none().text_color(color).when(bold, (el) => el.font_semibold()).child(text);
     const parts = [];
@@ -119,7 +119,7 @@ export default class ClaudeStatus extends View {
         first = false;
         if (w.resets_at <= now) { parts.push(span(`${short} —`)); continue; }
         const pct = Math.round(w.used_percentage ?? 0);
-        const color = pct >= 90 ? red : pct >= 75 ? amber : t.muted;
+        const color = pct >= 90 ? red : pct >= 75 ? amber : pct >= 50 ? yellow : green;
         parts.push(span(`${short} `), span(`${pct}%`, color, pct >= 75), span(` ↻${reset(key, w.resets_at)}`, t.dim));
       }
     });
