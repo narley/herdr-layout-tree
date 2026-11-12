@@ -2,7 +2,7 @@
 // views. Shared by every layout's tree (copied in by tree-view/build.py and herdr-tree/build.py):
 //   - count(w): how many a space has, shown on its >_ button;
 //   - rowsFor(w, t): a folded "TERMINALS 3 · 1 busy" line under the space's cards that opens into
-//     one row per terminal (folder, tab, what it runs or how long it has been idle). Click a row to
+//     one row per terminal (folder, tab name or number, what it runs or how long it has been idle). Click a row to
 //     go there; hover for Close. Terminals idle for IDLE_STALE are dimmed, and the line offers
 //     "close idle" (click twice) for them.
 // Busy or idle comes from Herdr (the program in front of the shell); the command line itself from
@@ -53,7 +53,7 @@ export class Terminals {
       const prev = was[p.terminal];
       since[p.terminal] = prev?.sig === sig ? prev : { sig, at: now };
       if (prev?.sig !== sig) dirty = true;
-      const row = { pane: p.pane, terminal: p.terminal, space: at.s, tab: at.i + 1, tabName: at.tb.name, folder: base(p.cwd), branch: p.branch, busy, what, at: since[p.terminal].at, focused: p.focused };
+      const row = { pane: p.pane, terminal: p.terminal, space: at.s, tab: at.i + 1, tabName: at.tb.named ? at.tb.name : null, folder: base(p.cwd), branch: p.branch, busy, what, at: since[p.terminal].at, focused: p.focused };
       row.stale = !busy && now - row.at > IDLE_STALE && prev?.sig === sig;
       if (!this.bySpace.has(at.s.id)) this.bySpace.set(at.s.id, []);
       this.bySpace.get(at.s.id).push(row);
@@ -121,10 +121,10 @@ export class Terminals {
       .on_hover((on, cx) => { this.hovered = on ? r.terminal : this.hovered === r.terminal ? null : this.hovered; cx.notify(); })
       .on_mouse_down("left", stop).on_mouse_up("left", stop)
       .on_click((_e, cx) => { cx.stop_propagation(); this.go(r); })
-      .tooltip(`${r.folder}${r.branch ? ` (${r.branch})` : ""} · tab ${r.tab}${r.tabName && r.tabName !== String(r.tab) ? ` "${r.tabName}"` : ""} · ${r.busy ? `running ${r.what}` : "idle"} for ${age}`)
+      .tooltip(`${r.folder}${r.branch ? ` (${r.branch})` : ""} · tab ${r.tab}${r.tabName ? ` "${r.tabName}"` : ""} · ${r.busy ? `running ${r.what}` : "idle"} for ${age}`)
       .child(div().size(6).rounded(3).flex_none().bg(r.busy ? (t.working ?? t.accent) : t.dim))
       .child(div().flex_shrink(0).max_w(96).truncate().text_color(t.foreground).child(r.folder))
-      .child(div().flex_none().text_size(10).text_color(t.dim).child(`tab ${r.tab}`))
+      .child(div().flex_shrink(0).max_w(80).truncate().text_size(10).text_color(t.dim).child(r.tabName || `tab ${r.tab}`))
       .child(div().flex_1().min_w(0).truncate().text_color(r.busy ? (t.working ?? t.accent) : t.dim).child(label))
       .child(div().flex_none().text_size(10).text_color(t.dim).child(age === "now" && !r.busy ? "" : age))
       .when(hover, (el) => el.child(
