@@ -46,9 +46,11 @@ Busy or idle comes from Herdr. The command itself comes from the terminal's titl
 the shell sets the title to the running command, for example in zsh:
 
 ```zsh
+title_run()  { print -n -- "\e]2;${${1//[[:cntrl:]]/ }[1,80]}\a"; }
+title_idle() { print -n -- "\e]2;\a"; }
 autoload -Uz add-zsh-hook
-add-zsh-hook preexec () { print -n -- "\e]2;${${1//[[:cntrl:]]/ }[1,80]}\a" }
-add-zsh-hook precmd  () { print -n -- "\e]2;\a" }
+add-zsh-hook preexec title_run
+add-zsh-hook precmd title_idle
 ```
 
 Without it a busy terminal shows the program's name (`node`, `ssh`) instead.
