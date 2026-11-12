@@ -1,6 +1,6 @@
 // claude-status: a clone of Herdr's `workspace-status` mod (0.1.13) with the Claude
 // account rate limits at the right, as the herdr TUI tab bar shows them:
-//   5h 4% ↻02:00 · 7d 3% ↻Fri        (one profile)
+//   personal 5h 4% ↻02:00 · 7d 3% ↻Fri   (one profile)
 //   work 5h 30% · 7d 8%  |  personal 7d 2%   (both reporting)
 // Read from the newest `claude.stats` terminal label per profile (written by
 // ~/.config/herdr/claude-desktop.sh on each machine); reports older than 12 h are
@@ -105,7 +105,7 @@ export default class ClaudeStatus extends View {
     const parts = [];
     list.forEach(({ profile, rl }, i) => {
       if (i > 0) parts.push(span("  |  ", t.dim));
-      if (list.length > 1) {
+      if (profile !== "default") {
         // Which account these limits belong to, at a glance: a badge in the profile's own colour.
         const tone = { personal: t.ansi6, work: t.ansi5 }[profile] ?? t.foreground;
         parts.push(div().flex_none().px(5).rounded(3).bg(tone).text_color(t.chrome).text_size(10).font_semibold().child(profile.toUpperCase()));
