@@ -206,16 +206,18 @@ export function spaceItem(r, rows, t, el) {
 // Herdr's own menu, as the tab bar's button opens: a terminal or any agent, in a new tab of this space.
 // It acts on the shown space, so that comes first. A row's press switches space or starts a drag,
 // so this button stops its own.
-export function newTabButton(w, t) {
+// n: the space's plain terminals (terminals.js), shown beside the icon when there are any.
+export function newTabButton(w, t, n = 0) {
   const stop = (_e, cx) => { cancelDrag(); cx.stop_propagation(); };
-  return div().id(`space-new-tab-${w.id}`).size(18).flex_none().flex().items_center().justify_center().rounded(4).text_color(t.dim)
+  return div().id(`space-new-tab-${w.id}`).h(18).min_w(18).when(n > 0, (el) => el.px(3)).gap(3).flex_none().flex().items_center().justify_center().rounded(4).text_color(t.dim)
     .cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
-    .tooltip("New terminal or agent here")
+    .tooltip(n > 0 ? `${n} terminal${n === 1 ? "" : "s"} open here (listed under TERMINALS). Click for a new terminal or agent` : "New terminal or agent here")
     .on_mouse_down("left", stop).on_mouse_up("left", stop)
     .on_click((e, cx) => {
       stop(e, cx);
       run("space.select", { id: w.id });
       openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 });
     })
-    .child(svg("mods/workspace-chrome/terminal.svg").size(12));
+    .child(svg("mods/workspace-chrome/terminal.svg").size(12))
+    .when(n > 0, (el) => el.child(div().text_size(10.5).font_semibold().child(String(n))));
 }
