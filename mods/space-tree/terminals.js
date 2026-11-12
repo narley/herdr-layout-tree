@@ -123,8 +123,13 @@ export class Terminals {
       .on_click((_e, cx) => { cx.stop_propagation(); this.go(r); })
       .tooltip(`${r.folder}${r.branch ? ` (${r.branch})` : ""} · tab ${r.tab}${r.tabName ? ` "${r.tabName}"` : ""} · ${r.busy ? `running ${r.what}` : "idle"} for ${age}`)
       .child(div().size(6).rounded(3).flex_none().bg(r.busy ? (t.working ?? t.accent) : t.dim))
-      .child(div().flex_shrink(0).max_w(96).truncate().text_color(t.foreground).child(r.folder))
-      .child(div().flex_shrink(0).max_w(80).truncate().text_size(10).text_color(t.dim).child(r.tabName || `tab ${r.tab}`))
+      // A named tab leads, highlighted, with the folder dimmed after it; otherwise the folder leads.
+      .when(!!r.tabName, (el) => el
+        .child(div().flex_shrink(0).max_w(96).truncate().text_color(t.foreground).child(r.tabName))
+        .child(div().flex_shrink(0).max_w(80).truncate().text_size(10).text_color(t.dim).child(r.folder)))
+      .when(!r.tabName, (el) => el
+        .child(div().flex_shrink(0).max_w(96).truncate().text_color(t.foreground).child(r.folder))
+        .child(div().flex_none().text_size(10).text_color(t.dim).child(`tab ${r.tab}`)))
       .child(div().flex_1().min_w(0).truncate().text_color(r.busy ? (t.working ?? t.accent) : t.dim).child(label))
       .child(div().flex_none().text_size(10).text_color(t.dim).child(age === "now" && !r.busy ? "" : age))
       .when(hover, (el) => el.child(
