@@ -19,7 +19,7 @@ function openUsage(profile) {
     if (t.state !== "live" || !t.labels?.["claude.stats"]) return false;
     try { return (JSON.parse(t.labels["claude.stats"]).profile || "default") === profile; } catch { return false; }
   }).length;
-  openOverlay({ mod: "claude-usage", kind: "popup", width: 340, height: 330 + 23 * Math.min(live, 8), props: { profile } });
+  openOverlay({ mod: "claude-usage", kind: "popup", width: 340, height: 430 + 23 * Math.min(live, 8), props: { profile } });
 }
 const ALERTS = "claude.limitAlerts";
 const WINDOWS = [["five_hour", "5h"], ["seven_day", "7d"]];
