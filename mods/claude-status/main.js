@@ -9,9 +9,18 @@
 
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, agents, terminals, theme, settings, run, window, keys, shared, setShared, notify, playSound } from "herdr";
+import { spaces, agents, terminals, theme, settings, run, window, keys, shared, setShared, notify, playSound, openOverlay } from "herdr";
 
 const STALE_S = 12 * 3600;
+
+// Click an account's badge for its usage (the claude-usage mod): tall enough for its live sessions.
+function openUsage(profile) {
+  const live = terminals().filter((t) => {
+    if (t.state !== "live" || !t.labels?.["claude.stats"]) return false;
+    try { return (JSON.parse(t.labels["claude.stats"]).profile || "default") === profile; } catch { return false; }
+  }).length;
+  openOverlay({ mod: "claude-usage", kind: "popup", width: 340, height: 330 + 23 * Math.min(live, 8), props: { profile } });
+}
 const ALERTS = "claude.limitAlerts";
 const WINDOWS = [["five_hour", "5h"], ["seven_day", "7d"]];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -108,7 +117,9 @@ export default class ClaudeStatus extends View {
       if (profile !== "default") {
         // Which account these limits belong to, at a glance: a badge in the profile's own colour.
         const tone = { personal: t.ansi6, work: t.ansi5 }[profile] ?? t.foreground;
-        parts.push(div().flex_none().px(5).rounded(3).bg(tone).text_color(t.chrome).text_size(10).font_semibold().child(profile.toUpperCase()));
+        parts.push(div().id(`usage-badge-${profile}`).flex_none().px(5).rounded(3).bg(tone).text_color(t.chrome).text_size(10).font_semibold()
+          .cursor_pointer().hover((s) => s.opacity(0.8)).tooltip(`${profile[0].toUpperCase()}${profile.slice(1)} account usage`)
+          .on_click(() => openUsage(profile)).child(profile.toUpperCase()));
         parts.push(span(" ", t.dim));
       }
       let first = true;
