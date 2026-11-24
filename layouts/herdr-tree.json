@@ -163,5 +163,8 @@
       ]
     }
   ],
-  "preview": "layouts/herdr-tree.svg"
+  "preview": "layouts/herdr-tree.svg",
+  "link_handlers": [
+    "code-peek"
+  ]
 }
